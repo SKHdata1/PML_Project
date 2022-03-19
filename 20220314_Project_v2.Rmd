@@ -1,0 +1,133 @@
+---
+title: "PML - Course Project"
+output: html_document
+---
+
+##**Background**
+ **In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). **
+
+##**Submission**
+**The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases. **
+
+###**Getting started**
+```{r Getting Started, echo=T, warning=FALSE}
+
+library(caret)
+library(tidyverse)
+library(AppliedPredictiveModeling)
+
+#Read file
+training <- read.csv("pml-training.csv", header=TRUE)
+View(training)
+#str(training)
+#head(training)
+
+#remove metadata columns
+training <- training[,8:160]
+View(training)
+
+#final data for predictions
+predicting <- read.csv("pml-testing.csv", header=TRUE)
+#remove metadata columns
+predicting <- predicting[,8:160]
+
+
+#Step 1: Create partition
+#Set seed
+set.seed(1234)
+
+training$classe <- (as.factor(training$classe))
+training <- data.frame(training)
+dim(training)
+plot(training$classe)
+
+#Removing columns of NAs
+#First make blank spots NA
+training[training == ""] <- NA
+View(training)
+
+#any is NA down col (100 gone)
+trainingC <- training[, !apply(training, 2, function(x) any(is.na(x)))]
+dim(trainingC)
+#View(trainingC)
+#proceed with removal of columns with NA
+
+inTrain = createDataPartition(trainingC$classe, p = 3/4)[[1]]
+View(inTrain)
+length(inTrain)
+
+train = trainingC[inTrain,]
+View(train)
+
+test = trainingC[-inTrain,]
+```
+**Cross-validation:** Here we are using a 75%/25% data-split between training/testing datasets for corss-validation purposes. This will allow us to test out-of-sample error on data not used to create the model; this is the accuracy of the predictions. 
+
+###**Preprocessing**
+```{r Preprocessing, echo=T, warning=FALSE}
+#Step 2 - Data exploration and dimension reduction
+
+#Explored 1) preprocess - center, scale, remove near-zero variance or 2) PCA to reduce dimensionality
+
+#Decided to proceed with PCA as pre-process
+
+procTrain2 <- preProcess(train[, -53], 
+                        method = c("pca"))
+procTrain2
+
+trainTransf2 <- predict(procTrain2, train[, -53])
+View(trainTransf2)
+
+plot(trainTransf2[,1],trainTransf2[,2], col=train$classe)
+
+#Conclude: Include PCA as preprocess in models below
+```
+
+###**Testing Models**
+```{r Testing Models, echo=T, warning=FALSE}
+#Step3 - Test models
+
+#rf
+library(randomForest)
+mdl1 <- randomForest(classe ~ ., method="rf", preProcess = "pca", prox=T, data = train)
+mdl1
+
+newP1 <- predict(mdl1, test)
+#summary(newP1)
+confusionMatrix(newP1, test$classe)
+
+#plot(mdl1)
+plot(mdl1$predicted)
+
+#gbm
+mdl2 <- train(classe ~ ., method="gbm", preProcess = "pca", verbose = F, data = train) 
+#names(mdl2)
+mdl2
+plot(mdl2)
+
+newP2 <- predict(mdl2, test) 
+#summary(newP2)
+confusionMatrix(newP2, test$classe)
+
+#lda
+mdl3 <- train(classe ~ ., method="lda", preProcess = "pca", data = train) 
+#mdl3$finalModel
+mdl3
+
+newP3 <- predict(mdl3, test) 
+#summary(newP3)
+confusionMatrix(newP3, test$classe)
+
+#Select RF due to highest accuracy
+```
+**Out-of-sample error:** The model that had the highest accuracy and thus lowest out-of-sample error (1-accuracy) on the testing dataset was chosen as the final model.
+
+**The final model selected was a random forest model, which had >99% accuracy in predictions**
+
+###**Final Prediction**
+```{r Final predictions, echo=T, warning=FALSE}
+#Step 5 - predictions
+final <- predict(mdl1, predicting)
+final
+summary(final)
+```
